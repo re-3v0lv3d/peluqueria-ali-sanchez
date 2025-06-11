@@ -1,0 +1,808 @@
+import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+    getAuth, 
+    onAuthStateChanged, 
+    createUserWithEmailAndPassword, 
+    signInWithEmailAndPassword, 
+    signOut, 
+    sendPasswordResetEmail 
+} from 'firebase/auth';
+import { 
+    getFirestore, 
+    collection, 
+    addDoc, 
+    getDocs, 
+    doc, 
+    updateDoc, 
+    deleteDoc, 
+    query, 
+    where, 
+    onSnapshot,
+    serverTimestamp,
+    getDoc,
+    setDoc
+} from 'firebase/firestore';
+import { PlusCircle, Edit, Trash2, X, LogIn, UserPlus, Package, Users, History, KeyRound } from 'lucide-react';
+
+// --- Firebase Configuration ---
+// The configuration will be provided by the environment.
+
+
+const firebaseConfig = {
+    apiKey: "AIzaSyBOtmU2vbCutQqmq4oxtgG3x7JGzgJt1_I",
+    authDomain: "peluqueria-f52f8.firebaseapp.com",
+    projectId: "peluqueria-f52f8",
+    storageBucket: "peluqueria-f52f8.firebasestorage.app",
+    messagingSenderId: "693606615190",
+    appId: "1:693606615190:web:8bb4f1c997d5df4ee51ab7",
+    measurementId: "G-YFDW87L3DP"
+  };
+
+// --- Initialize Firebase ---
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// --- Context for Authentication ---
+const AuthContext = createContext(null);
+const useAuth = () => useContext(AuthContext);
+
+const AuthProvider = ({ children }) => {
+    const [user, setUser] = useState(null);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+            if (firebaseUser) {
+                const userDocRef = doc(db, "users", firebaseUser.uid);
+                const userDocSnap = await getDoc(userDocRef);
+
+                if (userDocSnap.exists() && userDocSnap.data().isAdmin) {
+                    setIsAdmin(true);
+                } else {
+                    const usersQuery = query(collection(db, "users"));
+                    const querySnapshot = await getDocs(usersQuery);
+                    if (querySnapshot.empty) {
+                        await setDoc(userDocRef, { email: firebaseUser.email, isAdmin: true });
+                        setIsAdmin(true);
+                    } else {
+                         setIsAdmin(false);
+                    }
+                }
+                setUser(firebaseUser);
+            } else {
+                setUser(null);
+                setIsAdmin(false);
+            }
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const value = { user, isAdmin, loading };
+    
+    return (
+        <AuthContext.Provider value={value}>
+            {!loading && children}
+        </AuthContext.Provider>
+    );
+};
+
+
+// --- Main App Component ---
+export default function App() {
+    return (
+        <AuthProvider>
+            <SalonManager />
+        </AuthProvider>
+    );
+}
+
+function SalonManager() {
+    const { user, loading } = useAuth();
+    
+    if (loading) {
+        return <div className="flex justify-center items-center h-screen bg-gray-100"><div className="animate-spin rounded-full h-32 w-32 border-b-2 border-pink-500"></div></div>;
+    }
+
+    return (
+        <div className="min-h-screen bg-gray-50 font-sans">
+            {user ? <Dashboard /> : <AuthPage />}
+        </div>
+    );
+}
+
+// --- Authentication Page ---
+function AuthPage() {
+    const [isLogin, setIsLogin] = useState(true);
+
+    return (
+        <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-pink-100 to-purple-200 p-4">
+            <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-xl p-8 transition-all duration-500">
+                <div className="text-center mb-8">
+                    <h1 className="text-3xl font-bold text-gray-800">Salón de Belleza</h1>
+                    <p className="text-gray-500 mt-2">Gestión Inteligente</p>
+                </div>
+
+                {isLogin ? <Login /> : <Signup />}
+                
+                <div className="mt-6 text-center">
+                    <button
+                        onClick={() => setIsLogin(!isLogin)}
+                        className="text-sm font-medium text-pink-600 hover:text-pink-500 transition-colors"
+                    >
+                        {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// --- Login Component ---
+function Login() {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [message, setMessage] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+        } catch (err) {
+            setError('Error al iniciar sesión. Revisa tus credenciales.');
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handlePasswordReset = async () => {
+        if (!email) {
+            setError('Por favor, introduce tu email para recuperar la contraseña.');
+            return;
+        }
+        setLoading(true);
+        setError('');
+        setMessage('');
+        try {
+            await sendPasswordResetEmail(auth, email);
+            setMessage('Se ha enviado un enlace para recuperar tu contraseña a tu email.');
+        } catch (err) {
+            setError('Error al enviar el email de recuperación.');
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <form onSubmit={handleLogin}>
+            <h2 className="text-2xl font-semibold text-center text-gray-700 mb-6">Iniciar Sesión</h2>
+            {error && <p className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{error}</p>}
+            {message && <p className="bg-green-100 text-green-700 p-3 rounded-lg mb-4 text-sm">{message}</p>}
+            <div className="space-y-4">
+                <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Correo electrónico"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-400"
+                    required
+                />
+                <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Contraseña"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-400"
+                    required
+                />
+            </div>
+            <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-pink-500 text-white py-3 rounded-lg font-semibold mt-6 hover:bg-pink-600 transition-all disabled:bg-pink-300 flex items-center justify-center"
+            >
+                {loading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : <><LogIn className="mr-2 h-5 w-5" /> Iniciar Sesión</>}
+            </button>
+            <div className="text-center mt-4">
+                <button
+                    type="button"
+                    onClick={handlePasswordReset}
+                    className="text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                    <KeyRound className="inline mr-1 h-4 w-4" /> ¿Olvidaste tu contraseña?
+                </button>
+            </div>
+        </form>
+    );
+}
+
+// --- Signup Component ---
+function Signup() {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSignup = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const userDocRef = doc(db, "users", userCredential.user.uid);
+            
+            // Check if any user exists
+            const usersQuery = query(collection(db, "users"));
+            const querySnapshot = await getDocs(usersQuery);
+            
+            // First registered user is admin
+            if (querySnapshot.docs.length <= 1) { 
+                 await setDoc(userDocRef, { email: userCredential.user.email, isAdmin: true, createdAt: serverTimestamp() });
+            } else {
+                 await setDoc(userDocRef, { email: userCredential.user.email, isAdmin: false, createdAt: serverTimestamp() });
+            }
+
+        } catch (err) {
+            setError('Error al registrar la cuenta. Inténtalo de nuevo.');
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <form onSubmit={handleSignup}>
+            <h2 className="text-2xl font-semibold text-center text-gray-700 mb-6">Crear Cuenta</h2>
+            {error && <p className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{error}</p>}
+            <div className="space-y-4">
+                <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Correo electrónico"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-400"
+                    required
+                />
+                <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Contraseña (mínimo 6 caracteres)"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-400"
+                    required
+                />
+            </div>
+            <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-purple-500 text-white py-3 rounded-lg font-semibold mt-6 hover:bg-purple-600 transition-all disabled:bg-purple-300 flex items-center justify-center"
+            >
+                {loading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : <><UserPlus className="mr-2 h-5 w-5" /> Registrarse</>}
+            </button>
+        </form>
+    );
+}
+
+
+// --- Dashboard Component ---
+function Dashboard() {
+    const [activeTab, setActiveTab] = useState('products');
+
+    const handleLogout = async () => {
+        await signOut(auth);
+    };
+
+    const tabs = [
+        { id: 'products', label: 'Productos', icon: Package },
+        { id: 'clients', label: 'Clientes', icon: Users },
+    ];
+
+    return (
+        <div className="flex flex-col md:flex-row min-h-screen">
+            <aside className="w-full md:w-64 bg-white shadow-md p-4 flex-shrink-0">
+                <div className="text-center mb-8">
+                    <h1 className="text-2xl font-bold text-pink-600">Mi Salón</h1>
+                </div>
+                <nav className="flex md:flex-col justify-around md:justify-start md:space-y-2">
+                    {tabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`flex items-center w-full text-left p-3 rounded-lg transition-colors ${
+                                activeTab === tab.id
+                                    ? 'bg-pink-500 text-white shadow-md'
+                                    : 'text-gray-600 hover:bg-pink-100 hover:text-pink-700'
+                            }`}
+                        >
+                            <tab.icon className="h-5 w-5 mr-3 flex-shrink-0" />
+                            <span className="font-medium">{tab.label}</span>
+                        </button>
+                    ))}
+                </nav>
+                <div className="mt-auto pt-4 border-t absolute bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto">
+                     <button
+                        onClick={handleLogout}
+                        className="w-full text-left p-3 rounded-lg transition-colors text-gray-600 hover:bg-red-100 hover:text-red-700 flex items-center"
+                    >
+                       <LogIn className="h-5 w-5 mr-3 transform rotate-180" />
+                       <span className="font-medium">Cerrar Sesión</span>
+                    </button>
+                </div>
+            </aside>
+            <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-gray-100">
+                {activeTab === 'products' && <ProductsPage />}
+                {activeTab === 'clients' && <ClientsPage />}
+            </main>
+        </div>
+    );
+}
+
+// --- Products Page ---
+function ProductsPage() {
+    const [products, setProducts] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingProduct, setEditingProduct] = useState(null);
+    const { isAdmin } = useAuth();
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collection(db, "products"), (snapshot) => {
+            const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setProducts(productsData);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const openModalForNew = () => {
+        setEditingProduct(null);
+        setIsModalOpen(true);
+    };
+
+    const openModalForEdit = (product) => {
+        setEditingProduct(product);
+        setIsModalOpen(true);
+    };
+
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setEditingProduct(null);
+    };
+
+    if (loading) return <div className="text-center p-10">Cargando productos...</div>;
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-800">Productos</h2>
+                {isAdmin && (
+                    <button
+                        onClick={openModalForNew}
+                        className="bg-pink-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-pink-600 transition flex items-center shadow-md"
+                    >
+                        <PlusCircle className="mr-2 h-5 w-5" /> Añadir Producto
+                    </button>
+                )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {products.map(product => (
+                    <ProductCard key={product.id} product={product} onEdit={openModalForEdit} />
+                ))}
+            </div>
+            {products.length === 0 && <p className="text-center text-gray-500 mt-10">No hay productos disponibles.</p>}
+
+            {isModalOpen && <ProductModal product={editingProduct} onClose={closeModal} />}
+        </div>
+    );
+}
+
+// --- Product Card ---
+function ProductCard({ product, onEdit }) {
+    const { isAdmin } = useAuth();
+
+    const handleDelete = async () => {
+        if (window.confirm('¿Estás seguro de que quieres eliminar este producto?')) {
+            try {
+                await deleteDoc(doc(db, "products", product.id));
+            } catch (error) {
+                console.error("Error deleting product: ", error);
+                alert("Hubo un error al eliminar el producto.");
+            }
+        }
+    };
+
+    return (
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden transition-transform transform hover:-translate-y-1">
+            <img
+                src={product.imageUrl || `https://placehold.co/400x300/f871b5/ffffff?text=${encodeURIComponent(product.name)}`}
+                alt={product.name}
+                className="w-full h-48 object-cover"
+                onError={(e) => { e.target.onerror = null; e.target.src=`https://placehold.co/400x300/f871b5/ffffff?text=${encodeURIComponent(product.name)}`}}
+            />
+            <div className="p-4">
+                <h3 className="text-lg font-semibold text-gray-800">{product.name}</h3>
+                <p className="text-gray-600 mt-1 text-sm h-10 overflow-hidden">{product.description}</p>
+                <div className="mt-4 flex justify-between items-center">
+                    <span className="text-xl font-bold text-pink-600">{product.price}€</span>
+                    {isAdmin && (
+                        <div className="flex space-x-2">
+                            <button onClick={() => onEdit(product)} className="text-blue-500 hover:text-blue-700"><Edit size={20} /></button>
+                            <button onClick={handleDelete} className="text-red-500 hover:text-red-700"><Trash2 size={20} /></button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// --- Product Modal for Add/Edit ---
+function ProductModal({ product, onClose }) {
+    const [formData, setFormData] = useState({
+        name: product?.name || '',
+        description: product?.description || '',
+        price: product?.price || '',
+        imageUrl: product?.imageUrl || '',
+    });
+    const [loading, setLoading] = useState(false);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        const dataToSave = {
+            ...formData,
+            price: parseFloat(formData.price) || 0,
+        };
+
+        try {
+            if (product) {
+                // Update
+                const productRef = doc(db, "products", product.id);
+                await updateDoc(productRef, dataToSave);
+            } else {
+                // Add
+                await addDoc(collection(db, "products"), dataToSave);
+            }
+            onClose();
+        } catch (error) {
+            console.error("Error saving product: ", error);
+            alert("Hubo un error al guardar el producto.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-lg">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-gray-800">{product ? 'Editar Producto' : 'Añadir Producto'}</h2>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><X size={24} /></button>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input name="name" value={formData.name} onChange={handleChange} placeholder="Nombre del producto" className="w-full p-3 border rounded-lg" required />
+                    <textarea name="description" value={formData.description} onChange={handleChange} placeholder="Descripción" className="w-full p-3 border rounded-lg h-24" required />
+                    <input name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} placeholder="Precio (€)" className="w-full p-3 border rounded-lg" required />
+                    <input name="imageUrl" value={formData.imageUrl} onChange={handleChange} placeholder="URL de la imagen" className="w-full p-3 border rounded-lg" />
+                    <div className="flex justify-end space-x-4 mt-6">
+                        <button type="button" onClick={onClose} className="py-2 px-4 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cancelar</button>
+                        <button type="submit" disabled={loading} className="py-2 px-4 bg-pink-500 text-white rounded-lg hover:bg-pink-600 disabled:bg-pink-300">
+                            {loading ? 'Guardando...' : 'Guardar'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+// --- Clients Page ---
+function ClientsPage() {
+    const [clients, setClients] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+    const [editingClient, setEditingClient] = useState(null);
+    const [viewingClient, setViewingClient] = useState(null);
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collection(db, "clients"), (snapshot) => {
+            const clientsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setClients(clientsData);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const openModalForNew = () => {
+        setEditingClient(null);
+        setIsClientModalOpen(true);
+    };
+
+    const openModalForEdit = (client) => {
+        setEditingClient(client);
+        setIsClientModalOpen(true);
+    };
+
+    const closeModal = () => {
+        setIsClientModalOpen(false);
+        setEditingClient(null);
+        setViewingClient(null);
+    };
+    
+    if (loading) return <div className="text-center p-10">Cargando clientes...</div>;
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-800">Cartera de Clientes</h2>
+                <button
+                    onClick={openModalForNew}
+                    className="bg-purple-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-600 transition flex items-center shadow-md"
+                >
+                    <PlusCircle className="mr-2 h-5 w-5" /> Añadir Cliente
+                </button>
+            </div>
+            <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contacto</th>
+                            <th scope="col" className="relative px-6 py-3"><span className="sr-only">Acciones</span></th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                         {clients.map(client => (
+                            <tr key={client.id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="text-sm font-medium text-gray-900">{client.fullName}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="text-sm text-gray-500">{client.email || client.phone}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
+                                    <button onClick={() => setViewingClient(client)} className="text-green-600 hover:text-green-900">Historial</button>
+                                    <button onClick={() => openModalForEdit(client)} className="text-indigo-600 hover:text-indigo-900">Editar</button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                 {clients.length === 0 && <p className="text-center text-gray-500 p-10">No hay clientes registrados.</p>}
+            </div>
+
+            {isClientModalOpen && <ClientModal client={editingClient} onClose={closeModal} />}
+            {viewingClient && <ClientHistoryModal client={viewingClient} onClose={closeModal} />}
+        </div>
+    );
+}
+
+
+// --- Client Modal for Add/Edit ---
+function ClientModal({ client, onClose }) {
+    const [formData, setFormData] = useState({
+        fullName: client?.fullName || '',
+        email: client?.email || '',
+        phone: client?.phone || '',
+    });
+    const [loading, setLoading] = useState(false);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            if (client) {
+                const clientRef = doc(db, "clients", client.id);
+                await updateDoc(clientRef, formData);
+            } else {
+                await addDoc(collection(db, "clients"), {...formData, createdAt: serverTimestamp() });
+            }
+            onClose();
+        } catch (error) {
+            console.error("Error saving client: ", error);
+            alert("Hubo un error al guardar el cliente.");
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    const handleDelete = async () => {
+        if(client && window.confirm('¿Estás seguro de que quieres eliminar a este cliente y todo su historial? Esta acción es irreversible.')){
+             try {
+                // In a real app, you might want to delete subcollections too, which requires more complex logic.
+                await deleteDoc(doc(db, "clients", client.id));
+                onClose();
+            } catch (error) {
+                console.error("Error deleting client: ", error);
+                alert("Hubo un error al eliminar el cliente.");
+            }
+        }
+    };
+
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-lg">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-gray-800">{client ? 'Editar Cliente' : 'Añadir Cliente'}</h2>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><X size={24} /></button>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input name="fullName" value={formData.fullName} onChange={handleChange} placeholder="Nombre completo" className="w-full p-3 border rounded-lg" required />
+                    <input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="Correo electrónico" className="w-full p-3 border rounded-lg" />
+                    <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Teléfono" className="w-full p-3 border rounded-lg" />
+                     <p className="text-xs text-gray-500">Debe proporcionar al menos un correo electrónico o un teléfono.</p>
+                    <div className="flex justify-between items-center mt-6">
+                        <div>
+                        {client && (
+                             <button type="button" onClick={handleDelete} className="py-2 px-4 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center">
+                                 <Trash2 className="mr-2 h-4 w-4" /> Eliminar
+                            </button>
+                        )}
+                        </div>
+                        <div className="flex space-x-4">
+                            <button type="button" onClick={onClose} className="py-2 px-4 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cancelar</button>
+                            <button type="submit" disabled={loading || (!formData.email && !formData.phone)} className="py-2 px-4 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:bg-purple-300">
+                               {loading ? 'Guardando...' : 'Guardar'}
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+// --- Client History Modal ---
+function ClientHistoryModal({ client, onClose }) {
+    const [interactions, setInteractions] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showAddInteraction, setShowAddInteraction] = useState(false);
+    const [interactionType, setInteractionType] = useState('note');
+    const [note, setNote] = useState('');
+    const [productId, setProductId] = useState('');
+    const [products, setProducts] = useState([]);
+    
+    const interactionsCollectionRef = collection(db, `clients/${client.id}/interactions`);
+
+    useEffect(() => {
+        const fetchProducts = async () => {
+            const productsSnapshot = await getDocs(collection(db, "products"));
+            setProducts(productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        };
+        fetchProducts();
+
+        const q = query(interactionsCollectionRef);
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const interactionsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // Sort by timestamp, newest first
+            interactionsData.sort((a, b) => b.timestamp?.toDate() - a.timestamp?.toDate());
+            setInteractions(interactionsData);
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [client.id, interactionsCollectionRef]);
+
+    const handleAddInteraction = async (e) => {
+        e.preventDefault();
+        if (interactionType === 'note' && !note) return;
+        if (interactionType === 'purchase' && !productId) return;
+        
+        let newInteraction = {
+            type: interactionType,
+            timestamp: serverTimestamp(),
+        };
+
+        if (interactionType === 'note') {
+            newInteraction.text = note;
+        } else {
+            const product = products.find(p => p.id === productId);
+            newInteraction.productId = productId;
+            newInteraction.productName = product.name;
+            newInteraction.price = product.price;
+        }
+
+        await addDoc(interactionsCollectionRef, newInteraction);
+        
+        // Reset form
+        setShowAddInteraction(false);
+        setNote('');
+        setProductId('');
+    };
+    
+    return (
+         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-2xl max-h-[90vh] flex flex-col">
+                <div className="flex justify-between items-center mb-4 flex-shrink-0">
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-800">Historial de {client.fullName}</h2>
+                        <p className="text-gray-500">{client.email}</p>
+                    </div>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><X size={24} /></button>
+                </div>
+
+                <div className="overflow-y-auto flex-grow pr-2">
+                    {!showAddInteraction && (
+                        <button 
+                            onClick={() => setShowAddInteraction(true)}
+                            className="w-full bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600 transition flex items-center justify-center shadow-sm mb-4"
+                        >
+                            <PlusCircle className="mr-2 h-5 w-5" /> Añadir Interacción
+                        </button>
+                    )}
+                    {showAddInteraction && (
+                        <form onSubmit={handleAddInteraction} className="bg-gray-50 p-4 rounded-lg mb-4 space-y-3">
+                            <h3 className="font-semibold">Nueva Interacción</h3>
+                            <div className="flex space-x-4">
+                               <label className="flex items-center"><input type="radio" name="interactionType" value="note" checked={interactionType === 'note'} onChange={() => setInteractionType('note')} className="mr-2"/> Nota</label>
+                               <label className="flex items-center"><input type="radio" name="interactionType" value="purchase" checked={interactionType === 'purchase'} onChange={() => setInteractionType('purchase')} className="mr-2"/> Compra</label>
+                            </div>
+                            {interactionType === 'note' && (
+                                <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Escribe una nota sobre el cliente..." className="w-full p-2 border rounded-md"></textarea>
+                            )}
+                            {interactionType === 'purchase' && (
+                                <select value={productId} onChange={e => setProductId(e.target.value)} className="w-full p-2 border rounded-md">
+                                    <option value="">Selecciona un producto</option>
+                                    {products.map(p => <option key={p.id} value={p.id}>{p.name} - {p.price}€</option>)}
+                                </select>
+                            )}
+                             <div className="flex justify-end space-x-2">
+                                <button type="button" onClick={() => setShowAddInteraction(false)} className="py-1 px-3 bg-gray-200 rounded-md text-sm">Cancelar</button>
+                                <button type="submit" className="py-1 px-3 bg-green-500 text-white rounded-md text-sm">Guardar</button>
+                            </div>
+                        </form>
+                    )}
+                    
+                    {loading ? <p>Cargando historial...</p> : (
+                        <div className="space-y-4">
+                            {interactions.map(item => (
+                                <div key={item.id} className="bg-white p-4 rounded-lg border border-gray-200">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            {item.type === 'note' && <p className="text-gray-800">{item.text}</p>}
+                                            {item.type === 'purchase' && <p className="text-gray-800">Compra: <strong>{item.productName}</strong> por <strong>{item.price}€</strong></p>}
+                                        </div>
+                                         <span className={`text-xs font-semibold px-2 py-1 rounded-full ${item.type === 'purchase' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                            {item.type === 'purchase' ? 'Compra' : 'Nota'}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-2 text-right">
+                                        {item.timestamp ? new Date(item.timestamp.toDate()).toLocaleString('es-ES') : 'Fecha no disponible'}
+                                    </p>
+                                </div>
+                            ))}
+                            {interactions.length === 0 && !loading && (
+                                <div className="text-center py-8">
+                                    <History className="mx-auto h-12 w-12 text-gray-400" />
+                                    <h3 className="mt-2 text-sm font-medium text-gray-900">Sin historial</h3>
+                                    <p className="mt-1 text-sm text-gray-500">Este cliente aún no tiene interacciones registradas.</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+         </div>
+    );
+}
+
