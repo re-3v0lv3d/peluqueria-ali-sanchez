@@ -1,0 +1,16 @@
+{
+  "files": {
+    "main.css": "/peluqueria-ali-sanchez/static/css/main.118fca68.css",
+    "main.js": "/peluqueria-ali-sanchez/static/js/main.797d8fcd.js",
+    "static/js/453.ecb0665a.chunk.js": "/peluqueria-ali-sanchez/static/js/453.ecb0665a.chunk.js",
+    "static/media/logo.jpg": "/peluqueria-ali-sanchez/static/media/logo.d4ee8dc1ca4d82535334.jpg",
+    "index.html": "/peluqueria-ali-sanchez/index.html",
+    "main.118fca68.css.map": "/peluqueria-ali-sanchez/static/css/main.118fca68.css.map",
+    "main.797d8fcd.js.map": "/peluqueria-ali-sanchez/static/js/main.797d8fcd.js.map",
+    "453.ecb0665a.chunk.js.map": "/peluqueria-ali-sanchez/static/js/453.ecb0665a.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.118fca68.css",
+    "static/js/main.797d8fcd.js"
+  ]
+}
